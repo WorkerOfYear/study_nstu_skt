@@ -1,84 +1,103 @@
 import numpy as np
 import math
 import matplotlib.pyplot as plt
+from loguru import logger
 
 
-# Решаем прямую задачу
-# Задаем ячейки с намагниченостью
-
-# Способ 1 (вручную)
-# x_cells = [[-100, 0], [0, 100], [-100, 0], [0, 100]]
-# y_cells = [[-1000, 1000], [-1000, 1000], [-1000, 1000], [-1000, 1000]]
-# z_cells = [[-150, -100], [-150, -100], [-200, -150], [-200, -150]]
-# p_cells = [[1, 0, 0], [1, 0, 0], [1, 0, 0], [1, 0, 0]]
-# # центр ячеек
-# center_cells = [(-50, 0, -125), (50, 0, -125), (-50, 0, -175), (50, 0, -175)]
-# # Число ячеек
-# K = len(center_cells)
-
-# Способ 2 (задаём область и колличество ячеек)
-start = [-100, -1000, -200]
-end = [100, 1000, -100]
-
-count_x = 2
-count_z = 2
-
-count = count_x * count_z
-
-delta_x = round((end[0] - start[0])/count_x)
-# delta_y = round((end[1] - start[1])/count)
-delta_z = round((end[2] - start[2])/count_z)
-
-x_cells = [[start[0] + i * delta_x, start[0] +
-            (i + 1) * delta_x] for j in range(count_z) for i in range(count_x)]
-y_cells = [[start[1], end[1]] for i in range(count)]
-z_cells = [[end[2] - (i + 1) * delta_z, end[2] - i * delta_z]
-           for i in range(count_z) for j in range(count_x)]
-p_cells = [[1, 0, 0] for i in range(count)]
-
-center_cells = [[(x_cells[i][0] + x_cells[i][1])/2, (y_cells[i][0] + y_cells[i]
-                                                     [1])/2, (z_cells[i][0] + z_cells[i][1])/2] for i in range(count)]
-
-K = len(center_cells)
-
-# Задаём расположением приемников
-number_receivers = 500
-x_receiver = np.linspace(-1000, 1000, number_receivers)
-coordinates_receivers = [[i, 0, 25] for i in x_receiver]
+from reader import read_ini
 
 
-def volume_cells(x_cells, y_cells, z_cells):
-    '''Выводит список с объёмом всех ячеек'''
+class InitialConditions():
 
-    lenx = []
-    leny = []
-    lenz = []
-    res = []
+    def __init__(self, *args, **kwargs) -> None:
 
-    for i in x_cells:
-        lenx.append(i[1] - i[0])
+        self.x_start = kwargs['x_start']
+        self.x_end = kwargs['x_end']
+        self.y_start = kwargs['y_start']
+        self.y_end = kwargs['y_end']
+        self.z_start = kwargs['z_start']
+        self.z_end = kwargs['z_end']
 
-    for i in y_cells:
-        leny.append(i[1] - i[0])
+        self.count_x = kwargs['count_x']
+        self.count_z = kwargs['count_z']
 
-    for i in z_cells:
-        lenz.append(i[1] - i[0])
+        self.count = self.count_x * self.count_z
 
-    for i, item in enumerate(lenx):
-        res.append(abs(lenx[i] * leny[i] * lenz[i]))
+        self.delta_x = round((self.x_end - self.x_start)/self.count_x)
+        self.delta_z = round((self.z_end - self.z_start)/self.count_z)
 
-    return res
+        self.n_receivers = kwargs['n_receivers']
+        self.x_rec_start = kwargs['x_rec_start']
+        self.x_rec_end = kwargs['x_rec_end']
+
+        self.init_cells()
+        self.init_receivers()
+        self.volume_cells()
+
+        self.I = kwargs['I']
+
+    def init_cells(self):
+
+        self.x_cells = [[self.x_start + i * self.delta_x, self.x_start +
+                         (i + 1) * self.delta_x] for j in range(self.count_z) for i in range(self.count_x)]
+
+        self.y_cells = [[self.y_start, self.y_end] for i in range(self.count)]
+
+        self.z_cells = [[self.z_end - (i + 1) * self.delta_z, self.z_end - i * self.delta_z]
+                        for i in range(self.count_z) for j in range(self.count_x)]
+
+        self.p_cells = [[1, 0, 0] for i in range(self.count)]
+
+        self.center_cells = [[(self.x_cells[i][0] + self.x_cells[i][1])/2, (self.y_cells[i][0] + self.y_cells[i]
+                                                                            [1])/2, (self.z_cells[i][0] + self.z_cells[i][1])/2] for i in range(self.count)]
+
+    def init_receivers(self):
+
+        self.x_receiver = np.linspace(
+            self.x_rec_start, self.x_rec_end, self.n_receivers)
+        self.coords_rec = [[i, 0, 25] for i in self.x_receiver]
+
+    def volume_cells(self):
+
+        lenx = []
+        leny = []
+        lenz = []
+        res = []
+
+        for i in self.x_cells:
+            lenx.append(i[1] - i[0])
+
+        for i in self.y_cells:
+            leny.append(i[1] - i[0])
+
+        for i in self.z_cells:
+            lenz.append(i[1] - i[0])
+
+        for i, item in enumerate(lenx):
+            res.append(abs(lenx[i] * leny[i] * lenz[i]))
+
+        self.volume = res
 
 
-def calculation_B(p, center_cells, coordinates_receivers, vol, I):
+def calculation_B(ini: InitialConditions):
     '''Возвращает список со заначениями полей в приёмниках, а также матрицу L'''
+
     pi = math.pi
+
+    p = ini.p_cells
+    I = ini.I
+    vol = ini.volume
+    n_receivers = ini.n_receivers
+    count = ini.count
+    coords_rec = ini.coords_rec
+    center_cells = ini.center_cells
+
     Bx = []
     By = []
     Bz = []
-    L_all = np.zeros((3 * number_receivers, 3 * K))
+    L_all = np.zeros((3 * n_receivers, 3 * count))
 
-    for i, element in enumerate(coordinates_receivers):
+    for i, element in enumerate(coords_rec):
         x_rec = element[0]
         y_rec = element[1]
         z_rec = element[2]
@@ -165,7 +184,7 @@ def get_neighbors(count_x, count_z):
     return neighbors_list
 
 
-def regul_c(count_x, count_z, initial_val = 0.001):
+def reg_c(count_x, count_z, initial_val=0.001):
     '''Рассчёт С-матрицы регуляризации'''
 
     # Полное колличество ячеек - count
@@ -205,48 +224,56 @@ def regul_c(count_x, count_z, initial_val = 0.001):
     return C
 
 
-# мощность источника
-I = 10
+def reg_alfa(A, alfa=1, state=True) -> np.array:
+    '''
+    Альфа регуляризация
+    '''
+    if state == True:
+        ones_matrix = np.ones((len(A), len(A)))
+        I = np.diag(np.diag(ones_matrix))
+        return alfa * I
 
-# Расчет объёма ячеек
-vol = volume_cells(x_cells, y_cells, z_cells)
 
-# Расчет значений практических сигналов
-B_practical_x, B_practical_y, B_practical_z, L = calculation_B(
-    p_cells, center_cells, coordinates_receivers, vol, I)
+def calculation_P(B_practical_x, B_practical_y, B_practical_z, L, ini: InitialConditions):
 
-# выводим графики
+    count_x = ini.count_x
+    count_z = ini.count_z
 
-# plt.plot(x_receiver, B_practical_x)
-# plt.grid(True)
-# plt.tight_layout()
-# plt.show()
+    # # Формируем матрицу A
+    L_t = L.T
+    A = L_t.dot(L)
+    C = reg_c(count_x, count_z, initial_val=0.001)
+    Alfa = reg_alfa(A, alfa=1, state=False)
+    A_new = A + C  # + alfa * I
 
-# Решаем обратную задачу (с помощью практических B в приёмниках находим P в ячейках)
+    # # Формируем матрицу b
+    S = np.zeros(3 * len(B_practical_x)).T
+    for i, _ in enumerate(B_practical_x):
+        S[3*i] = B_practical_x[i]
+        S[3*i+1] = B_practical_y[i]
+        S[3*i+2] = B_practical_z[i]
+    b = L_t.dot(S)
 
-# Формируем матрицу A
-L_t = L.T
-A = L_t.dot(L)
+    # Решаем СЛАУ
+    P_res = np.linalg.solve(A_new, b)
+    logger.info(f'\nВектор намагниченности P:\n{np.round(P_res, 3)}')
 
-# Альфа регуляризация
-# ones_matrix = np.ones((len(A), len(A)))
-# I = np.diag(np.diag(ones_matrix))
-# alfa = 1
 
-# С - регуляризация
-C = regul_c(count_x, count_z, initial_val = 0.001)
+def main(path):
 
-A_new = A + C # + alfa * I
+    # Начальные условия
+    content = read_ini(path)
+    ini = InitialConditions(**content)
 
-# Формируем матрицу b
-S = np.zeros(3 * len(B_practical_x)).T
-for i, item in enumerate(B_practical_x):
-    S[3*i] = B_practical_x[i]
-    S[3*i+1] = B_practical_y[i]
-    S[3*i+2] = B_practical_z[i]
+    # Решение прямой задачи
+    B_practical_x, B_practical_y, B_practical_z, L = calculation_B(ini)
 
-b = L_t.dot(S)
+    # Решение обратной задачи
+    P_res = calculation_P(B_practical_x, B_practical_y,
+                          B_practical_z, L, ini)
 
-# Решаем СЛАУ
-P_res = np.linalg.solve(A_new, b)
-print(P_res)
+
+if __name__ == '__main__':
+
+    path = 'settings.ini'
+    main(path)
