@@ -25,5 +25,6 @@ def read_ini(path):
 
     content['n_receivers'] = int(config.get("InValues", "n_receivers"))
     content['I'] = int(config.get("InValues", "I"))
+    content['z_rec'] = int(config.get("InValues", "z_rec"))
 
     return content

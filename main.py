@@ -5,6 +5,7 @@ from loguru import logger
 
 
 from reader import read_ini
+from visual import show_plot, show_field
 
 
 class InitialConditions():
@@ -29,6 +30,7 @@ class InitialConditions():
         self.n_receivers = kwargs['n_receivers']
         self.x_rec_start = kwargs['x_rec_start']
         self.x_rec_end = kwargs['x_rec_end']
+        self.z_rec = kwargs['z_rec']
 
         self.init_cells()
         self.init_receivers()
@@ -46,16 +48,20 @@ class InitialConditions():
         self.z_cells = [[self.z_end - (i + 1) * self.delta_z, self.z_end - i * self.delta_z]
                         for i in range(self.count_z) for j in range(self.count_x)]
 
-        self.p_cells = [[1, 0, 0] for i in range(self.count)]
+        # TODO if i in range(1,3) else [0, 0, 0] 
+        self.p_cells = [[1, 0, 0] if i in [5,6,9,10] else [0, 0, 0] for i in range(self.count)]
+        # print(self.p_cells)
+
+        # self.p_cells = [[1, 0, 0] for i in range(self.count)]
+
 
         self.center_cells = [[(self.x_cells[i][0] + self.x_cells[i][1])/2, (self.y_cells[i][0] + self.y_cells[i]
                                                                             [1])/2, (self.z_cells[i][0] + self.z_cells[i][1])/2] for i in range(self.count)]
 
     def init_receivers(self):
 
-        self.x_receiver = np.linspace(
-            self.x_rec_start, self.x_rec_end, self.n_receivers)
-        self.coords_rec = [[i, 0, 25] for i in self.x_receiver]
+        self.x_receiver = np.linspace(self.x_rec_start, self.x_rec_end, self.n_receivers)
+        self.coords_rec = [[i, 0, self.z_rec] for i in self.x_receiver]
 
     def volume_cells(self):
 
@@ -184,20 +190,14 @@ def get_neighbors(count_x, count_z):
     return neighbors_list
 
 
-def reg_c(count_x, count_z, initial_val=0.001):
+def reg_c(count_x, count_z, gamma, neighbors_list):
     '''Рассчёт С-матрицы регуляризации'''
 
     # Полное колличество ячеек - count
     count = count_x * count_z
+
     # Нулевая матрица размером = count * 3, count * 3
     C = np.zeros((count * 3, count * 3))
-    # Начальное значение параметра регуляризации gamma для всех ячеек
-    gamma = np.zeros((count * 3)) + initial_val
-
-    # Колличество соседей
-    M = 1
-
-    neighbors_list = get_neighbors(count_x, count_z)
 
     for k in range(count):
         for m in range(count):
@@ -212,11 +212,13 @@ def reg_c(count_x, count_z, initial_val=0.001):
                 for i in range(3):
 
                     sum = 0
+                    neighbors_count = 0
                     for j in neighbors_list[m]:
                         sum += gamma[3*j + i]
+                        neighbors_count += 1
                         pass
 
-                    C[3*k + i][3*m + i] = M * gamma[3*k + i] + sum
+                    C[3*k + i][3*m + i] = neighbors_count * gamma[3*k + i] + sum
 
             else:
                 print('Некорректное заполнение матрицы')
@@ -231,6 +233,7 @@ def reg_alfa(A, alfa=1, state=True) -> np.array:
     if state == True:
         ones_matrix = np.ones((len(A), len(A)))
         I = np.diag(np.diag(ones_matrix))
+
         return alfa * I
 
 
@@ -239,24 +242,54 @@ def calculation_P(B_practical_x, B_practical_y, B_practical_z, L, ini: InitialCo
     count_x = ini.count_x
     count_z = ini.count_z
 
-    # # Формируем матрицу A
+    count = count_x * count_z
+    initial_val = 10**(-18)
+
+    # Формируем матрицу A
     L_t = L.T
     A = L_t.dot(L)
-    C = reg_c(count_x, count_z, initial_val=0.001)
-    Alfa = reg_alfa(A, alfa=1, state=False)
-    A_new = A + C  # + alfa * I
+    # logger.debug(f'Матрица A: {A}')
 
-    # # Формируем матрицу b
+    # Формируем матрицу b
     S = np.zeros(3 * len(B_practical_x)).T
     for i, _ in enumerate(B_practical_x):
         S[3*i] = B_practical_x[i]
         S[3*i+1] = B_practical_y[i]
         S[3*i+2] = B_practical_z[i]
     b = L_t.dot(S)
+    # logger.debug(f'Матрица b: {b}')
 
-    # Решаем СЛАУ
-    P_res = np.linalg.solve(A_new, b)
-    logger.info(f'\nВектор намагниченности P:\n{np.round(P_res, 3)}')
+    
+    # Начальное значение параметра регуляризации gamma для всех ячеек
+    gamma = np.zeros((count * 3)) + initial_val
+
+    # logger.debug(f'Начальное значение параметра регуляризации gamma для всех ячеек: {gamma}')
+    neighbors_list = get_neighbors(count_x, count_z)
+
+    # Процесс регуляризации
+    while True:
+        C = reg_c(count_x, count_z, gamma, neighbors_list)
+        # logger.debug(f'Матрица С: {C}')
+        Alfa = reg_alfa(A, alfa=0.01, state=True)
+        # A_new = A + C  
+        A_new = A + Alfa
+
+        # Решаем СЛАУ
+        P_res = np.linalg.solve(A_new, b)
+        # logger.info(f'\nВектор намагниченности Px:\n{np.round(P_res[::3], 5)}')
+        # logger.info(f'\nВектор намагниченности Py:\n{np.round(P_res[1::3], 5)}')
+        # logger.info(f'\nВектор намагниченности Pz:\n{np.round(P_res[2::3], 5)}')
+
+        break_point = True
+
+        # for i in range(count):
+        #     for j in neighbors_list[i]:
+        #         if P_res[3*i] > 10 * P_res[3*j]:
+        #             gamma[3*j] = gamma[3*j] * 2
+        #             break_point = False
+
+        if break_point:
+            return P_res
 
 
 def main(path):
@@ -268,10 +301,13 @@ def main(path):
     # Решение прямой задачи
     B_practical_x, B_practical_y, B_practical_z, L = calculation_B(ini)
 
+    # show_field(B_practical_x, B_practical_y, B_practical_z, ini)
+
     # Решение обратной задачи
     P_res = calculation_P(B_practical_x, B_practical_y,
                           B_practical_z, L, ini)
 
+    show_plot(ini, np.round(P_res, 2))
 
 if __name__ == '__main__':
 
