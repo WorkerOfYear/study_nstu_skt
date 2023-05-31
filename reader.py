@@ -27,4 +27,11 @@ def read_ini(path):
     content['I'] = int(config.get("InValues", "I"))
     content['z_rec'] = int(config.get("InValues", "z_rec"))
 
+    content['p_val'] = int(config.get("Magnetization", "p_val"))
+    content['p_rectangle_start'] = int(config.get("Magnetization", "p_rectangle_start"))
+    content['p_rectangle_width'] = int(config.get("Magnetization", "p_rectangle_width"))
+    content['p_rectangle_heigth'] = int(config.get("Magnetization", "p_rectangle_heigth"))
+
+    content['initial_gamma'] = float(config.get("Gamma", "initial_gamma"))
+
     return content

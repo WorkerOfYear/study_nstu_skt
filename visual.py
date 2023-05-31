@@ -4,12 +4,13 @@ from matplotlib.patches import Rectangle
 import matplotlib as mpl
 from matplotlib.colors import ListedColormap, LinearSegmentedColormap
 
+
 def show_field (B_practical_x, B_practical_y, B_practical_z, ini):
     plt.plot(ini.x_receiver, B_practical_x)
     plt.show()
 
 
-def show_plot(ini, p):
+def get_plot(ini, p):
 
     count_x = ini.count_x
     count_z = ini.count_z
@@ -30,33 +31,26 @@ def show_plot(ini, p):
     x_receiver = ini.x_receiver
     z = np.zeros((len(x_receiver))) + ini.z_rec
 
-    ax.scatter(x_receiver, z, alpha=0.5, linewidths=1)
+    
 
-    cmap = LinearSegmentedColormap.from_list('green_paradiase', ["lawngreen", "lightseagreen"])
+    # cmap = LinearSegmentedColormap.from_list('green_paradiase', ["lawngreen", "lightseagreen"])
+    cmap = LinearSegmentedColormap.from_list('green_paradiase', ["white", "black"])
+
+    ax.scatter(x_receiver, z, alpha=0.5, linewidths=1, cmap=cmap)
+    
     
     count = 0
     for j in range(count_z):
         for i in range(count_x):
             x = x_start + i * width
             z = z_end - j * heigth
-            rect = Rectangle((x, z), width, -1 * heigth, facecolor = cmap(abs(p[3*count])), edgecolor = 'g')
+            rect = Rectangle((x, z), width, -1 * heigth, facecolor = cmap(abs(p[3*count])), edgecolor = 'w')
             ax.add_patch(rect)
 
-            x = ini.center_cells[count][0] - 0.1 * width
-            z = ini.center_cells[count][2] - 0.1 * heigth
-            ax.text(x,z,p[3 * count])
+            # x = ini.center_cells[count][0] - 0.1 * width
+            # z = ini.center_cells[count][2] - 0.1 * heigth
+            # ax.text(x,z,p[3 * count], fontsize=8)
 
             count += 1
 
-    plt.show()
-
-
-def main():
-    viridis = mpl.colormaps['viridis']
-    print(viridis(0.1))
-    print(viridis(0.5))
-    print(viridis(1))
-
-
-if __name__ == '__main__':
-    main()
+    return fig

@@ -5,7 +5,8 @@ from loguru import logger
 
 
 from reader import read_ini
-from visual import show_plot, show_field
+from visual import get_plot, show_field
+from interface import get_interface
 
 
 class InitialConditions():
@@ -27,6 +28,14 @@ class InitialConditions():
         self.delta_x = round((self.x_end - self.x_start)/self.count_x)
         self.delta_z = round((self.z_end - self.z_start)/self.count_z)
 
+        self.p_val = kwargs['p_val']
+        self.p_rectangle_start = kwargs['p_rectangle_start']
+        self.p_rectangle_width = kwargs['p_rectangle_width']
+        self.p_rectangle_heigth = kwargs['p_rectangle_heigth']
+
+        self.p_nonzero = []
+        self.fill_p_nonzero()
+
         self.n_receivers = kwargs['n_receivers']
         self.x_rec_start = kwargs['x_rec_start']
         self.x_rec_end = kwargs['x_rec_end']
@@ -37,6 +46,13 @@ class InitialConditions():
         self.volume_cells()
 
         self.I = kwargs['I']
+        self.initial_gamma = kwargs['initial_gamma']
+
+    def fill_p_nonzero(self):
+
+        for i in range(self.p_rectangle_heigth):
+            for j in range(self.p_rectangle_width):
+                self.p_nonzero.append(self.p_rectangle_start + j + self.count_x * i)
 
     def init_cells(self):
 
@@ -48,19 +64,16 @@ class InitialConditions():
         self.z_cells = [[self.z_end - (i + 1) * self.delta_z, self.z_end - i * self.delta_z]
                         for i in range(self.count_z) for j in range(self.count_x)]
 
-        # TODO if i in range(1,3) else [0, 0, 0] 
-        self.p_cells = [[1, 0, 0] if i in [5,6,9,10] else [0, 0, 0] for i in range(self.count)]
-        # print(self.p_cells)
-
-        # self.p_cells = [[1, 0, 0] for i in range(self.count)]
-
+        self.p_cells = [[self.p_val, 0, 0] if i in self.p_nonzero else [0, 0, 0]
+                        for i in range(self.count)]
 
         self.center_cells = [[(self.x_cells[i][0] + self.x_cells[i][1])/2, (self.y_cells[i][0] + self.y_cells[i]
                                                                             [1])/2, (self.z_cells[i][0] + self.z_cells[i][1])/2] for i in range(self.count)]
 
     def init_receivers(self):
 
-        self.x_receiver = np.linspace(self.x_rec_start, self.x_rec_end, self.n_receivers)
+        self.x_receiver = np.linspace(
+            self.x_rec_start, self.x_rec_end, self.n_receivers)
         self.coords_rec = [[i, 0, self.z_rec] for i in self.x_receiver]
 
     def volume_cells(self):
@@ -243,7 +256,7 @@ def calculation_P(B_practical_x, B_practical_y, B_practical_z, L, ini: InitialCo
     count_z = ini.count_z
 
     count = count_x * count_z
-    initial_val = 10**(-18)
+    initial_val = ini.initial_gamma
 
     # Формируем матрицу A
     L_t = L.T
@@ -259,7 +272,6 @@ def calculation_P(B_practical_x, B_practical_y, B_practical_z, L, ini: InitialCo
     b = L_t.dot(S)
     # logger.debug(f'Матрица b: {b}')
 
-    
     # Начальное значение параметра регуляризации gamma для всех ячеек
     gamma = np.zeros((count * 3)) + initial_val
 
@@ -269,26 +281,35 @@ def calculation_P(B_practical_x, B_practical_y, B_practical_z, L, ini: InitialCo
     # Процесс регуляризации
     while True:
         C = reg_c(count_x, count_z, gamma, neighbors_list)
-        # logger.debug(f'Матрица С: {C}')
-        Alfa = reg_alfa(A, alfa=0.01, state=True)
-        # A_new = A + C  
-        A_new = A + Alfa
+        Alfa = reg_alfa(A, alfa=10**-8, state=True)
+
+        A_new = A + Alfa + C
 
         # Решаем СЛАУ
         P_res = np.linalg.solve(A_new, b)
+
         # logger.info(f'\nВектор намагниченности Px:\n{np.round(P_res[::3], 5)}')
         # logger.info(f'\nВектор намагниченности Py:\n{np.round(P_res[1::3], 5)}')
         # logger.info(f'\nВектор намагниченности Pz:\n{np.round(P_res[2::3], 5)}')
 
-        break_point = True
+        _break_point = True
+        _up_gamma = set()
 
-        # for i in range(count):
-        #     for j in neighbors_list[i]:
-        #         if P_res[3*i] > 10 * P_res[3*j]:
-        #             gamma[3*j] = gamma[3*j] * 2
-        #             break_point = False
+        for i in range(count):
+            for j in neighbors_list[i]:
+                if P_res[3*i] > 4 * P_res[3*j]:
+                    _up_gamma.add(i)
+                    _up_gamma.add(j)
+                    _break_point = False
 
-        if break_point:
+        for i in _up_gamma:
+            gamma[3*i] = gamma[3*i] * 2
+
+        # logger.info(f'\ngamma:\n{np.round(gamma[::3], 3)}')
+        # logger.info(f'\ngamma:\n{gamma[2::3]}')
+        # logger.info(f'\ngamma:\n{_up_gamma}')
+
+        if _break_point:
             return P_res
 
 
@@ -307,7 +328,10 @@ def main(path):
     P_res = calculation_P(B_practical_x, B_practical_y,
                           B_practical_z, L, ini)
 
-    show_plot(ini, np.round(P_res, 2))
+    fig = get_plot(ini, np.round(P_res, 2))
+    get_interface(ini, fig)
+    
+
 
 if __name__ == '__main__':
 
