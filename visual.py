@@ -25,8 +25,8 @@ def get_plot(ini, p):
 
     fig = plt.figure(figsize=(10, 7))
     ax = fig.add_subplot()
-    ax.set_xlim(-400, 400)
-    ax.set_ylim(-300, 100)
+    ax.set_xlim(x_start - 100, x_end + 100)
+    ax.set_ylim(z_start - 100, ini.z_rec + 50)
 
     x_receiver = ini.x_receiver
     z = np.zeros((len(x_receiver))) + ini.z_rec
